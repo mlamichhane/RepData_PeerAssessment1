@@ -5,21 +5,139 @@ output:
     keep_md: true
 ---
 
+```{r setoptions, echo=FALSE}
+library(knitr)
+opts_chunk$set(echo = TRUE)
+```
 
-## Loading and preprocessing the data
+This is a report of outcome of analysis on data from a personal activity monitoring device. This device collects data at 5 minute intervals through out the day. The data consists of two months of data from an anonymous individual collected during the months of October and November, 2012 and include the number of steps taken in 5 minute intervals each day.
 
+The variables included in this dataset are:
 
+- steps: Number of steps taking in a 5-minute interval (missing values are coded as NA)
+- date: The date on which the measurement was taken in YYYY-MM-DD format
+- interval: Identifier for the 5-minute interval in which measurement was taken
 
-## What is mean total number of steps taken per day?
+The analysis was performed with the help of ***dplyr*** package. Also, the ***lattice*** package was used to plot the graphs. It is necessary to install those packages before the analysis and load them using the following R commands;
+```{r, message=FALSE, results= "hide"}
+library(dplyr)
+library(lattice)
+```
 
+##Loading and preprocessing the data
+First of all, the zip file containing the actual data file should be extracted and the activity data is loaded to R variable. Since the date values are loaded as character string, we need to convert them to the actual date format. Below is the code snippet to load and preprocess the data;   
+```{r}
+unzip("activity.zip")
+activity <- read.csv("activity.csv", header = TRUE, stringsAsFactor = FALSE)
+activity$date  <- as.Date(activity$date, format = "%Y-%m-%d")
+```
 
+Let us now verify if the data is loaded properly or not.
+```{r}
+str(activity)
+```
 
-## What is the average daily activity pattern?
+Everything looks good. Let's start with answering the few questions.
 
+### What is mean total number of steps taken per day?
+In order find out the mean of total number of steps per day, we first need to aggregate the data. We are ignoring any missing value at this point. Let's load the data to ***dplyr*** dataset.
+```{r}
+activity_df <- tbl_df(activity)
+```
 
+Aggregate the data and load it to the different dataset and check the output.
+```{r}
+summary_steps <- activity_df %>% group_by(date) %>% summarise(Total = sum(steps, na.rm = TRUE))
+head(summary_steps)
+```
 
-## Imputing missing values
+Looks good. The 0 value for October 1st is due to missing data. Let's draw the histogram of total number of steps taken each day.
+```{r}
+hist(summary_steps$Total, main = "Total number of steps taken per day", xlab = "Total number of steps")
+```
 
+Let's calculate the mean of total number of steps taken per day.
+```{r}
+mean(summary_steps$Total)
+```
 
+And the median too.
+```{r}
+median(summary_steps$Total)
+```
+
+### What is the average daily activity pattern?
+We will now find out the average steps across all days. In order to achieve this, we aggregate the data based on the time interval and load them to the separate dataset. 
+```{r}
+summary_activity <- activity_df %>% group_by(interval) %>% summarise(Average = mean(steps, na.rm = TRUE))
+```
+
+We also make a time series plot of the 5-minute interval.
+```{r}
+plot(summary_activity, type = "l", xlab = "5-minute interval", ylab = "Average number of steps", main = "Average daily activity pattern")
+```
+
+Let's also find which 5-minute interval has the maximum number of steps.
+```{r}
+summary_activity[which(summary_activity$Average == max(summary_activity$Average)),]
+```
+
+It seems like the person is most active at around 8:35 in the morning.
+
+### Imputing missing values
+It is understood that data usually have missing values and we need to find out if our data is exception to this norm.
+```{r}
+nrow(activity[which(is.na(activity$steps)),])
+```
+
+We now need to devise a strategy for filling in all those missing values. For this, we will take dataset with the average of each 5 minutes interval (***summary_activity***) and will merge it with the original activity dataset to fill the missing values for respective interval.
+
+```{r}
+activity_merged <- merge(activity, summary_activity, by.x="interval", by.y="interval", all=TRUE)
+activity_merged$steps[is.na(activity_merged$steps)]  <- activity_merged$Average[is.na(activity_merged$steps)]
+```
+
+Let's verify if we are able to fill in all the missing values.
+```{r}
+nrow(activity_merged[which(is.na(activity_merged$steps)),])
+```
+
+Using the dplyr package, we aggregate the total number of steps taken for each day and then plot the histogram as done previously.
+```{r}
+activity_df <- tbl_df(activity_merged)
+summary_steps <- activity_df %>% group_by(date) %>% summarise(Total = sum(steps, na.rm = TRUE))
+hist(summary_steps$Total, main = "Total number of steps taken per day", xlab = "Total number of steps")
+```
+
+Again, calculate the mean and median with no missing data.
+```{r}
+mean(summary_steps$Total)
+median(summary_steps$Total)
+```
 
 ## Are there differences in activity patterns between weekdays and weekends?
+In order to analyse activity pattern between weekdays and weekends, we will add a new variable to our newly created dataset (***activity_merged***) to indicate whethere a date is a weekday or weekend.
+```{r}
+activity_merged$day <- as.factor(ifelse(weekdays(activity_merged$date) %in% c("Sunday", "Saturday"), "weekend", "weekday"))
+```
+
+Verify if we got the additional variable right.
+```{r}
+head(activity_merged)
+```
+
+We now aggregate the steps based on interval and day of the week (weekday or weekend).
+```{r}
+activity_df <- tbl_df(activity_merged)
+summary_activity <- activity_df %>% group_by(interval,day) %>% summarise(Average = mean(steps))
+```
+
+It is always a good idea to check your data.
+```{r}
+head(summary_activity)
+```
+
+Finally, time series plot of the 5-minute interval and average number of steps taken, averaged across all weekday or weekend days.
+```{r}
+xyplot(summary_activity$Average ~ summary_activity$interval | summary_activity$day, layout = c(1, 2), type="l", xlab = "5-minute interval", ylab = "Average number of steps", main = "Average daily activity pattern")
+```
